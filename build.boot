@@ -10,7 +10,10 @@
                             [clojure-csv "RELEASE"]
                             [semantic-csv "RELEASE"]
                             [huri "0.7.0-SNAPSHOT"]
-                            [com.rpl/specter "RELEASE"]])
+                            [com.rpl/specter "RELEASE"]
+                            [criterium "RELEASE"]
+                            [tesser.core "RELEASE"]
+                            [com.taoensso/nippy "RELEASE"]])
 
 (task-options!
  aot {:namespace   #{'allstate-claims.core}}
