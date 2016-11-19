@@ -3,12 +3,9 @@
             [clojure.core.reducers :as r]
             [clojure.java.io :as io]
             [clojure.string :as str]
-            [huri.core :as h]
             [semantic-csv.core :as sc]
-            [clojure.edn :as edn]
-            [taoensso.nippy :as nippy]
-            [taoensso.nippy.compression :as ncomp])
-  (:import [java.io DataOutputStream DataInputStream]))
+            [taoensso.nippy :as nippy])
+  (:import [java.io DataInputStream DataOutputStream]))
 
 ;; Utils
 (defn- keyword-starts-with? [keyword prefix]
@@ -61,71 +58,52 @@
 
 (do
   (println "Reading train.dat...")
-  (time (defonce train (read-file "resources/train.dat")))
+  (time (defonce train-df (read-file "resources/train.dat")))
   (println "Reading test.dat...")
-  (time (defonce test (read-file "resources/test.dat"))))
+  (time (defonce test-df (read-file "resources/test.dat"))))
 
 ;; Dummifying
 (defn- append-to-key [k s]
   (keyword (str (name k) s)))
 
-(defn dummify
-  "Splits out a given key for a categorical feature (1, 2...k) into k dummy keys
-  of (0, 1)."
-  [ms k]
-  (let [possible-values (sort (set (h/col k ms)))
-        dummies (map (partial append-to-key k)
-                     possible-values)]
-    (for [line ms]
-      (conj (reduce #(assoc %1 %2 0)
-                    (dissoc line k)
-                    dummies)
-            [(append-to-key k (k line)) 1]))))
-
-(defn dummify-all [ms ks]
-  (reduce dummify ms ks))
+(defn- str-join-keys [k1 k2]
+  (keyword (str (name k1) (name k2))))
 
 (defn dummy-vals
   "Find the possible values of a given key in a dataframe"
   [k df]
-  (into #{} (r/map k df)))
+  (into #{} (map k df)))
 
-(defn pdummy-vals
-  "Find the possible values of a given key in a dataframe"
-  [k df]
-  (into #{} (concat (pmap k (partition-all 512 df)))))
-
-#_(time (dummy-vals :cat1 test-csv))
-#_(time (pdummy-vals :cat1 test-csv))
-
-(defn dummies
+(defn dummies-map
   "Find the the possible values for given keys in a dataframe, dumps them into a
   map: k->[v]"
   [df ks]
   (into {} (r/map
-            (fn [k] [k (dummy-vals k df)])
+            (fn [k] [k (into {} (map #(vector % (str-join-keys k %))
+                                     (dummy-vals k df)))])
             ks)))
 
-#_(time (dummies tmp categories))
-#_(time (defonce dummy-map (dummies train-csv categories)))
+(do
+  (println "finding dummies")
+  (time (def dummies (merge-with into
+                                 (dummies-map train-df cat-keys)
+                                 (dummies-map test-df cat-keys)))))
 
-(defn cast-for-lgbm
-  "Finds the categorical variables, dummifies all of them."
-  [ms]
-  (let [cat-ks (filter #(str/starts-with? (name %) "cat") (h/cols ms))]
-    (dummify-all ms cat-ks)))
+(defn dummify [df dummy-map]
+  (for [row df]
+    (reduce-kv (fn [row k v->header]
+                 (let [v (k row)
+                       new-entries (zipmap (vals v->header)
+                                           (repeat 0))]
+                   (-> (merge row new-entries)
+                       (assoc (v->header v) 1)
+                       (dissoc k))))
+               row
+               dummy-map)))
 
-#_(def train-data (cast-for-lgbm train-csv))
-#_(def test-data (cast-for-lgbm test-csv))
-
-(defn process-csvs []
-  (with-open [in-file (io/reader "resources/train.csv")
-              out-file (io/writer "resources/out/train.csv")]
-    (->> (csv/parse-csv in-file)
-         sc/mappify
-         cast-for-lgbm
-         (sc/spit-csv out-file))))
+#_(def train-data (dummify train-df dummies))
+#_(def test-data (dummify test-df dummies))
 
 ;; Spit out the files for LGBM
-;; (sc/spit-csv "resources/out/train.csv" train-data)
-;; (sc/spit-csv "resources/out/test.csv" test-data)
+#_(sc/spit-csv "resources/train-data.csv" train-data)
+#_(sc/spit-csv "resources/test-data.csv" test-data)

@@ -2,18 +2,19 @@
 (def version "0.1.0-SNAPSHOT")
 
 (set-env! :resource-paths #{"resources" "src"}
-          :source-paths   #{"test"}
-          :dependencies   '[[org.clojure/clojure "1.9.0-alpha14"]
-                            [adzerk/boot-test "RELEASE" :scope "test"]
+          :source-paths #{"test"}
+          :dependencies '[[org.clojure/clojure "1.9.0-alpha14"]
+                          [adzerk/boot-test "RELEASE" :scope "test"]
 
-                            [me.raynes/conch "RELEASE"]
-                            [clojure-csv "RELEASE"]
-                            [semantic-csv "RELEASE"]
-                            [huri "0.7.0-SNAPSHOT"]
-                            [com.rpl/specter "RELEASE"]
-                            [criterium "RELEASE"]
-                            [tesser.core "RELEASE"]
-                            [com.taoensso/nippy "RELEASE"]])
+                          [me.raynes/conch "RELEASE"]
+                          [clojure-csv "RELEASE"]
+                          [semantic-csv "RELEASE"]
+                          [huri "0.7.0-SNAPSHOT"]
+                          [com.rpl/specter "RELEASE"]
+                          [criterium "RELEASE"]
+                          [tesser.core "RELEASE"]
+                          [com.taoensso/nippy "RELEASE"]
+                          [iota "1.1.3"]])
 
 (task-options!
  aot {:namespace   #{'allstate-claims.core}}
