@@ -4,7 +4,8 @@
             [clojure.java.io :as io]
             [clojure.string :as str]
             [semantic-csv.core :as sc]
-            [taoensso.nippy :as nippy])
+            [taoensso.nippy :as nippy]
+            [huri.core :as h])
   (:import [java.io DataInputStream DataOutputStream]))
 
 ;; Utils
@@ -69,27 +70,30 @@
 (defn- str-join-keys [k1 k2]
   (keyword (str (name k1) (name k2))))
 
-(defn dummy-vals
+(defn possible-vals [k df]
+  (into #{} (map k df)))
+
+(defn dummy-keys
   "Find the possible values of a given key in a dataframe"
   [k df]
-  (into #{} (map k df)))
+  (into {} (map #(vector % (str-join-keys k %) )
+                (possible-vals k df))))
 
 (defn dummies-map
   "Find the the possible values for given keys in a dataframe, dumps them into a
   map: k->[v]"
   [df ks]
   (into {} (r/map
-            (fn [k] [k (into {} (map #(vector % (str-join-keys k %))
-                                     (dummy-vals k df)))])
+            (fn [k] [k (dummy-keys k df)])
             ks)))
 
 (do
   (println "finding dummies")
-  (time (def dummies (merge-with into
-                                 (dummies-map train-df cat-keys)
-                                 (dummies-map test-df cat-keys)))))
+  (time (defonce dummies (merge-with into
+                                     (dummies-map train-df cat-keys)
+                                     (dummies-map test-df cat-keys)))))
 
-(defn dummify [df dummy-map]
+(defn dummify [dummy-map df]
   (for [row df]
     (reduce-kv (fn [row k v->header]
                  (let [v (k row)
@@ -101,9 +105,32 @@
                row
                dummy-map)))
 
-#_(def train-data (dummify train-df dummies))
-#_(def test-data (dummify test-df dummies))
+#_(def train-data (dummify dummies train-df))
+#_(def test-data (dummify dummies test-df))
 
 ;; Spit out the files for LGBM
+(defn pipeline [in out]
+  (with-open [i (io/reader in)
+              w (io/writer out)]
+    (let [csv (csv/parse-csv i)
+          header (map keyword (first csv))
+          body (rest csv)]
+      (.write w (csv/write-csv [(first csv)]))
+      (->> (sc/batch 512 body)
+           (r/map (partial sc/mappify {:header header}))
+           (r/map (partial sc/cast-with sc/->double {:only cont-keys}))
+           (r/map (partial sc/cast-with keyword {:only cat-keys}))
+           (r/map (partial sc/cast-with sc/->int {:only [:id]}))
+           (r/map (partial dummify dummies))
+           (r/map (partial sc/cast-with str))
+           (r/map (partial map vals))
+           (r/map csv/write-csv)
+           (reduce (fn [w row]
+                     (.write w row)
+                     w)
+                   w)))))
+
+#_(time (pipeline "resources/test.csv" "resources/test-data.csv"))
+
 #_(sc/spit-csv "resources/train-data.csv" train-data)
 #_(sc/spit-csv "resources/test-data.csv" test-data)
